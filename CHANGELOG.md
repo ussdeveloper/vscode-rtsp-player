@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-10
+
+### Added
+
+- Activity Bar icon and a **Recent streams** view: quick actions (open stream, open from clipboard)
+  and the last 12 URLs; click to play, inline trash icon to remove, refresh/clear in the view title.
+- Tree labels show `host:port/path` only — credentials never appear in the view; tooltips are redacted.
+- Commands `rtspPlayer.refreshRecent`, `rtspPlayer.removeRecent`, `rtspPlayer.clearRecent`.
+- Shared recent-stream store (`src/streams.ts`) that notifies the view and the panel input history.
+
 ## [0.3.0] - 2026-11-10
 
 ### Changed

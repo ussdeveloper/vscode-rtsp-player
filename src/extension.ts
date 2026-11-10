@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { readConfig } from './config';
 import { probeFfmpeg } from './ffmpeg';
 import { initLog, log, logHistory, showLog } from './log';
-import { getRecentUrls, normalizeStreamUrl, RtspPlayerPanel } from './panel';
+import { RtspPlayerPanel } from './panel';
+import { RecentStreamsProvider, removeRecentCommand } from './recentView';
 import { showSelfTest } from './selfTest';
+import { clearRecentUrls, getRecentUrls, normalizeStreamUrl } from './streams';
 import { disposeServer } from './streamServer';
 
 async function promptForUrl(preset?: string): Promise<string | undefined> {
@@ -55,6 +57,9 @@ export function activate(context: vscode.ExtensionContext): void {
   initLog(context);
   log(`activate (vscode ${vscode.version}, platform ${process.platform}, ffmpeg=${readConfig().ffmpegPath})`);
 
+  const recentProvider = new RecentStreamsProvider(context);
+  context.subscriptions.push(recentProvider, vscode.window.registerTreeDataProvider('rtspPlayer.recent', recentProvider));
+
   context.subscriptions.push(
     vscode.commands.registerCommand('rtspPlayer.open', async (argument?: unknown) => {
       const url = typeof argument === 'string' ? argument : await pickStreamUrl(context);
@@ -103,6 +108,26 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('rtspPlayer.showLog', () => {
       showLog();
+    }),
+
+    vscode.commands.registerCommand('rtspPlayer.refreshRecent', () => {
+      recentProvider.refresh();
+    }),
+
+    vscode.commands.registerCommand('rtspPlayer.removeRecent', async (argument?: unknown) => {
+      await removeRecentCommand(context, recentProvider, argument);
+    }),
+
+    vscode.commands.registerCommand('rtspPlayer.clearRecent', async () => {
+      const choice = await vscode.window.showWarningMessage(
+        'Clear the list of recent stream URLs?',
+        { modal: true },
+        'Clear',
+      );
+      if (choice === 'Clear') {
+        await clearRecentUrls(context);
+        log('recent stream list cleared');
+      }
     }),
 
     vscode.commands.registerCommand('rtspPlayer.selfTest', async () => {

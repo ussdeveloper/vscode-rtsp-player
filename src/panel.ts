@@ -7,10 +7,7 @@ import { readConfig } from './config';
 import { log, redact } from './log';
 import type { SessionUpdate } from './session';
 import { RtspSession } from './session';
-
-const HISTORY_KEY = 'rtspPlayer.recentUrls';
-const HISTORY_LIMIT = 12;
-const ALLOWED_PROTOCOLS = ['rtsp:', 'rtsps:', 'http:', 'https:', 'file:'];
+import { describeStream, getRecentUrls, normalizeStreamUrl, rememberUrl } from './streams';
 
 /** Root of all ffmpeg output; also whitelisted as a webview resource root. */
 function globalTmpRoot(): string {
@@ -21,44 +18,6 @@ function globalTmpRoot(): string {
     // Best effort; the panel still works without the resource-scheme fallback.
   }
   return root;
-}
-
-export function normalizeStreamUrl(input: string): string {
-  const value = input.trim();
-  if (!value) {
-    throw new Error('The URL is empty.');
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error('This does not look like a valid URL.');
-  }
-  if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
-    throw new Error(`Unsupported protocol "${parsed.protocol}".`);
-  }
-  return parsed.toString();
-}
-
-export function getRecentUrls(context: vscode.ExtensionContext): string[] {
-  return context.globalState.get<string[]>(HISTORY_KEY, []);
-}
-
-async function rememberUrl(context: vscode.ExtensionContext, url: string): Promise<void> {
-  const recent = getRecentUrls(context).filter((entry) => entry !== url);
-  recent.unshift(url);
-  await context.globalState.update(HISTORY_KEY, recent.slice(0, HISTORY_LIMIT));
-}
-
-export function describeStream(rawUrl: string): string {
-  try {
-    const parsed = new URL(rawUrl);
-    const tail = parsed.pathname.split('/').filter(Boolean).pop() ?? '';
-    const host = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
-    return `RTSP ${tail ? `${host}/${tail}` : host}`.slice(0, 48);
-  } catch {
-    return 'RTSP Player';
-  }
 }
 
 interface IncomingMessage {

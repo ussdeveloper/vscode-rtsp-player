@@ -3,6 +3,9 @@
 Watch **RTSP** streams (IP cameras, NVRs, DVRs) inside a VS Code tab — no external player,
 no browser plug-in. The UI uses the bundled **Roboto** font.
 
+The extension adds its own **icon in the Activity Bar** with a *Recent streams* view: click an entry
+to play it, use the inline trash icon to forget it.
+
 ## How it works
 
 VS Code webviews cannot play RTSP directly, so the extension does what any player does:
@@ -32,9 +35,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## Usage
 
-1. `Ctrl+Shift+P` → **RTSP Player: Open Stream…**
+1. `Ctrl+Shift+P` → **RTSP Player: Open Stream…** (or click the camera icon in the Activity Bar → **Open Stream…**)
 2. Paste a URL such as `rtsp://user:password@192.168.1.10:554/stream1` and confirm.
 3. In the tab: **Play / Stop**, audio toggle, ⚙ opens settings. Double-click the video for fullscreen.
+
+The **Recent streams** view lists the last 12 URLs. Labels never show credentials —
+only `host:port/path`; clicking an item opens the stream, the trash icon removes it from history.
 
 | Command | Action |
 |---|---|
@@ -44,6 +50,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 | `rtspPlayer.checkFfmpeg` | Verify that ffmpeg is available |
 | `rtspPlayer.selfTest` | Headless check: ffmpeg → HLS server → fetch playlist and segment |
 | `rtspPlayer.showLog` | Open the “RTSP Player” output channel |
+| `rtspPlayer.refreshRecent` | Refresh the Recent streams view |
+| `rtspPlayer.removeRecent` | Remove one entry from history |
+| `rtspPlayer.clearRecent` | Clear the whole history (asks for confirmation) |
 
 External links (activate the extension through `onUri`):
 `vscode://local.rtsp-player/play?url=rtsp%3A%2F%2F...`
@@ -102,8 +111,9 @@ code --install-extension rtsp-player-0.3.0.vsix
 
 Layout: `src/extension.ts` – activation and commands, `src/panel.ts` – webview,
 `src/session.ts` – ffmpeg lifecycle, `src/streamServer.ts` – HLS server and playlist synthesis,
-`src/log.ts` – logging, `src/selfTest.ts` – self-test, `media/player.js` – player,
-`media/fonts.css` + `media/fonts/` – Roboto.
+`src/streams.ts` – URL validation and the recent-stream store, `src/recentView.ts` – Activity Bar
+tree view, `src/log.ts` – logging, `src/selfTest.ts` – self-test, `media/player.js` – player,
+`media/fonts.css` + `media/fonts/` – Roboto, `media/rtsp.svg` – Activity Bar icon.
 
 Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: see [SECURITY.md](SECURITY.md).
 Third-party notices: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
