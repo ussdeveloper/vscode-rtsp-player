@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { log, redact } from './log';
-import {
+import { log, redact } from './log';import {
   describeStreamLabel,
   getRecentUrls,
   onDidChangeRecent,
@@ -48,8 +47,7 @@ const ACTIONS: ActionNode[] = [
  * Activity bar view listing recent streams. Items only ever show a label
  * without credentials; the full URL stays in the command argument.
  */
-export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTreeNode> {
-  private readonly emitter = new vscode.EventEmitter<RecentTreeNode | undefined>();
+export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTreeNode> {  private readonly emitter = new vscode.EventEmitter<RecentTreeNode | undefined>();
   private readonly observer: vscode.Disposable;
 
   readonly onDidChangeTreeData = this.emitter.event;
@@ -61,8 +59,10 @@ export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTree
   refresh(): void {
     try {
       this.emitter.fire(undefined);
-    } catch {
+      log('recent view: refresh requested');
+    } catch (err) {
       // Rendering errors must not propagate into the caller (e.g. play()).
+      log(`recent view: refresh failed — ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -103,7 +103,12 @@ export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTree
       return [];
     }
     const recent = getRecentUrls(this.context).map<RecentNode>((url) => ({ kind: 'recent', url }));
+    log(`recent view: getChildren -> ${recent.length} recent + ${ACTIONS.length} actions`);
     return [...ACTIONS, ...recent];
+  }
+
+  getParent(): undefined {
+    return undefined;
   }
 
   /** Resolves the URL behind a context-menu/inline command argument. */

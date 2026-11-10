@@ -2,7 +2,7 @@
   "name": "rtsp-player",
   "displayName": "RTSP Player",
   "description": "Watch RTSP / IP camera streams inside a VS Code tab (ffmpeg + HLS + hls.js).",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "publisher": "ussdeveloper",
   "license": "MIT",
   "repository": {

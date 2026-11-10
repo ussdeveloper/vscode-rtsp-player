@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-11-10
+
+### Fixed
+
+- **Recent streams view did not pick up new URLs in a second window.** The change event only exists inside
+  one extension host while `globalState` is shared, so the view now also re-reads the list whenever the
+  window gains focus.
+- `getRecentUrls()` tolerates a corrupted or non-array stored value instead of throwing.
+
+### Added
+
+- The tree provider logs `recent view: getChildren -> N recent + 2 actions` and every refresh, so
+  `RTSP Player: Show Log` shows exactly what the view was asked to render.
+
 ## [0.4.2] - 2026-11-10
 
 ### Fixed

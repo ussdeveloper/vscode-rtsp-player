@@ -58,7 +58,17 @@ export function activate(context: vscode.ExtensionContext): void {
   log(`activate (vscode ${vscode.version}, platform ${process.platform}, ffmpeg=${readConfig().ffmpegPath})`);
 
   const recentProvider = new RecentStreamsProvider(context);
-  context.subscriptions.push(recentProvider, vscode.window.registerTreeDataProvider('rtspPlayer.recent', recentProvider));
+  context.subscriptions.push(
+    recentProvider,
+    vscode.window.registerTreeDataProvider('rtspPlayer.recent', recentProvider),
+    // Another window may have played a stream; globalState is shared but the
+    // change event is not, so re-read the list whenever this window gets focus.
+    vscode.window.onDidChangeWindowState((state) => {
+      if (state.focused) {
+        recentProvider.refresh();
+      }
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rtspPlayer.open', async (argument?: unknown) => {

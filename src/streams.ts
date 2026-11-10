@@ -47,7 +47,11 @@ export function describeStream(rawUrl: string): string {
 }
 
 export function getRecentUrls(context: vscode.ExtensionContext): string[] {
-  return context.globalState.get<string[]>(HISTORY_KEY, []);
+  const stored = context.globalState.get<unknown>(HISTORY_KEY, []);
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return stored.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
 }
 
 /** A failing listener (e.g. an unregistered tree view) must never break playback. */
