@@ -1,0 +1,310 @@
+import { ChildProcess, spawn } from 'child_process';
+import { randomBytes } from 'crypto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import type { RtspConfig } from './config';
+import { readConfig } from './config';
+import { buildFfmpegArgs, resolveFfmpegPath } from './ffmpeg';
+import { log, redact } from './log';
+import { ensureServer, getStreamUrl, hasReadySegment, mount, unmount } from './streamServer';
+
+export type SessionState = 'connecting' | 'playing' | 'error' | 'stopped';
+
+export interface SessionUpdate {
+  state: SessionState;
+  message?: string;
+  detail?: string;
+  streamUrl?: string;
+  fallbackUrl?: string;
+  attempt?: number;
+}
+
+const RETRY_DELAY_MS = 2000;
+const STABLE_UPTIME_MS = 15000;
+const STDERR_TAIL_LINES = 30;
+
+const liveChildren = new Set<ChildProcess>();
+let exitHookInstalled = false;
+
+/** Best effort: never leave a detached ffmpeg behind if the host dies. */
+function trackChild(child: ChildProcess): void {
+  liveChildren.add(child);
+  if (!exitHookInstalled) {
+    exitHookInstalled = true;
+    process.once('exit', () => {
+      for (const running of liveChildren) {
+        try {
+          running.kill();
+        } catch {
+          // Already gone.
+        }
+      }
+    });
+  }
+}
+
+/**
+ * One ffmpeg process producing live HLS output for one URL.
+ * Every (re)start gets a fresh mount key so the webview always reloads its source.
+ */
+export class RtspSession {
+  private readonly keyBase = randomBytes(8).toString('hex');
+  private key = '';
+  private dir = '';
+  private attempt = 0;
+  private failures = 0;
+  private child?: ChildProcess;
+  private pollTimer?: NodeJS.Timeout;
+  private retryTimer?: NodeJS.Timeout;
+  private startedAt = 0;
+  private stopped = true;
+  private stderrTail: string[] = [];
+
+  constructor(
+    private readonly inputUrl: string,
+    private readonly audio: boolean,
+    private readonly onUpdate: (update: SessionUpdate) => void,
+  ) {}
+
+  /** Directory ffmpeg writes into; also used for the resource-scheme fallback. */
+  get outputDir(): string {
+    return this.dir;
+  }
+
+  async start(): Promise<void> {
+    this.stopped = false;
+    this.failures = 0;
+    this.attempt = 0;
+    await this.launch();
+  }
+
+  stop(): void {
+    if (this.stopped) {
+      return;
+    }
+    this.stopped = true;
+    this.clearTimers();
+    this.killChild();
+    this.releaseAttempt();
+    this.emit({ state: 'stopped' });
+  }
+
+  private emit(update: SessionUpdate): void {
+    const detail = update.message ? ` — ${update.message}` : '';
+    log(`session ${this.key || '-'}: ${update.state}${detail}`);
+    this.onUpdate(update);
+  }
+
+  private async launch(): Promise<void> {
+    this.clearTimers();
+    this.releaseAttempt();
+
+    this.attempt += 1;
+    this.key = `${this.keyBase}${this.attempt.toString(16).padStart(2, '0')}`;
+    this.dir = path.join(os.tmpdir(), 'rtsp-player', String(process.pid), this.key);
+    this.stderrTail = [];
+
+    try {
+      await fs.promises.mkdir(this.dir, { recursive: true });
+    } catch (err) {
+      this.fail('Could not create the temporary directory', String(err));
+      return;
+    }
+    if (this.stopped) {
+      return;
+    }
+
+    const config = readConfig();
+    mount(this.key, this.dir, config.segmentDuration);
+    this.emit({
+      state: 'connecting',
+      message: this.attempt > 1 ? `Reconnecting (attempt ${this.attempt})…` : 'Connecting to the stream…',
+      attempt: this.attempt,
+    });
+
+    const exe = resolveFfmpegPath(config);
+    const args = buildFfmpegArgs({ inputUrl: this.inputUrl, outDir: this.dir, config, audio: this.audio });
+    log(`session ${this.key}: url=${redact(this.inputUrl)} mode=${config.videoMode} audio=${this.audio}`);
+    log(`session ${this.key}: ffmpeg=${exe}`);
+    log(`session ${this.key}: args=${redact(args.join(' '))}`);
+
+    let child: ChildProcess;
+    try {
+      child = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (err) {
+      this.fail('Failed to start ffmpeg', String(err));
+      return;
+    }
+
+    this.child = child;
+    this.startedAt = Date.now();
+    trackChild(child);
+    child.once('exit', () => liveChildren.delete(child));
+
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => {
+      for (const raw of chunk.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) {
+          continue;
+        }
+        this.stderrTail.push(redact(line));
+        log(`session ${this.key}: ffmpeg: ${redact(line)}`);
+        if (this.stderrTail.length > STDERR_TAIL_LINES) {
+          this.stderrTail.shift();
+        }
+      }
+    });
+
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      this.child = undefined;
+      const detail =
+        err.code === 'ENOENT'
+          ? `Cannot find \`${exe}\`. Install ffmpeg and add it to PATH, or set \`rtspPlayer.ffmpegPath\`.`
+          : err.message;
+      this.fail('ffmpeg did not start', detail);
+    });
+
+    child.on('exit', (code, signal) => this.onExit(code, signal, config));
+
+    this.waitForPlaylist(config.connectTimeoutMs);
+  }
+
+  private waitForPlaylist(timeoutMs: number): void {
+    const deadline = Date.now() + timeoutMs;
+
+    const tick = async (): Promise<void> => {
+      if (this.stopped || !this.child) {
+        return;
+      }
+      if (await hasReadySegment(this.dir)) {
+        const serverPort = await ensureServer();
+        if (this.stopped) {
+          return;
+        }
+        this.emit({
+          state: 'playing',
+          message: 'Live',
+          streamUrl: getStreamUrl(this.key, serverPort),
+          attempt: this.attempt,
+        });
+        return;
+      }
+      if (this.stopped) {
+        return;
+      }
+      if (Date.now() > deadline) {
+        this.fail(
+          'Timed out waiting for data',
+          this.stderrTail.join('\n') ||
+            'ffmpeg produced no first segment. Check the URL, the credentials and the transport setting.',
+        );
+        return;
+      }
+      this.pollTimer = setTimeout(() => void tick(), 250);
+    };
+
+    this.pollTimer = setTimeout(() => void tick(), 250);
+  }
+
+  private onExit(code: number | null, signal: NodeJS.Signals | null, config: RtspConfig): void {
+    if (this.stopped) {
+      return;
+    }
+    this.child = undefined;
+    this.clearTimers();
+
+    if (Date.now() - this.startedAt >= STABLE_UPTIME_MS) {
+      this.failures = 0;
+    }
+    const detail = this.stderrTail.join('\n') || undefined;
+
+    if (this.failures < config.maxReconnects) {
+      this.failures += 1;
+      this.emit({
+        state: 'connecting',
+        message: `Stream ended (${code ?? signal ?? 'no code'}) — retrying in ${RETRY_DELAY_MS / 1000} s…`,
+        detail,
+        attempt: this.attempt + 1,
+      });
+      this.retryTimer = setTimeout(() => {
+        if (!this.stopped) {
+          void this.launch();
+        }
+      }, RETRY_DELAY_MS);
+      return;
+    }
+
+    this.fail('Could not keep the stream alive', detail);
+  }
+
+  private fail(message: string, detail?: string): void {
+    if (this.stopped) {
+      return;
+    }
+    this.stopped = true;
+    this.clearTimers();
+    this.killChild();
+    this.releaseAttempt();
+    this.emit({
+      state: 'error',
+      message,
+      detail: detail || this.stderrTail.join('\n') || undefined,
+      attempt: this.attempt,
+    });
+  }
+
+  private clearTimers(): void {
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = undefined;
+    }
+  }
+
+  private killChild(): void {
+    const child = this.child;
+    this.child = undefined;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      return;
+    }
+    const pid = child.pid;
+    if (process.platform === 'win32' && pid) {
+      try {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on(
+          'error',
+          () => {
+            try {
+              child.kill();
+            } catch {
+              // Already gone.
+            }
+          },
+        );
+        return;
+      } catch {
+        // Fall through to the cross-platform kill.
+      }
+    }
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      // Already gone.
+    }
+  }
+
+  private releaseAttempt(): void {
+    if (!this.key) {
+      return;
+    }
+    unmount(this.key);
+    const dir = this.dir;
+    this.key = '';
+    this.dir = '';
+    void fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}

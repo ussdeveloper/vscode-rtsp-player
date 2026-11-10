@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+media/player.bundle.js
+media/player.bundle.js.map
+dist/**/*.map
+
+# packaging output
+*.vsix
+
+# local tooling
+.tools/
+.vscode-test/
+
+# editor / OS noise
+.DS_Store
+Thumbs.db
+*.log
+*.local
+.env
+.env.*

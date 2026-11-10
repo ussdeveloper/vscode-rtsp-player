@@ -1,0 +1,186 @@
+{
+  "name": "rtsp-player",
+  "displayName": "RTSP Player",
+  "description": "Watch RTSP / IP camera streams inside a VS Code tab (ffmpeg + HLS + hls.js).",
+  "version": "0.3.0",
+  "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/rtsp-player.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "rtsp",
+    "camera",
+    "ip camera",
+    "stream",
+    "video",
+    "ffmpeg",
+    "hls"
+  ],
+  "activationEvents": [
+    "onUri"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rtspPlayer.open",
+        "title": "Open Stream…",
+        "category": "RTSP Player",
+        "icon": "$(device-camera-video)"
+      },
+      {
+        "command": "rtspPlayer.openUrl",
+        "title": "Open Stream from Clipboard",
+        "category": "RTSP Player"
+      },
+      {
+        "command": "rtspPlayer.stopActive",
+        "title": "Stop Active Stream",
+        "category": "RTSP Player",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "rtspPlayer.checkFfmpeg",
+        "title": "Check ffmpeg",
+        "category": "RTSP Player"
+      },
+      {
+        "command": "rtspPlayer.selfTest",
+        "title": "Run Self-test (ffmpeg + HLS server)",
+        "category": "RTSP Player"
+      },
+      {
+        "command": "rtspPlayer.showLog",
+        "title": "Show Log",
+        "category": "RTSP Player"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "rtspPlayer.open"
+        },
+        {
+          "command": "rtspPlayer.openUrl"
+        },
+        {
+          "command": "rtspPlayer.stopActive"
+        },
+        {
+          "command": "rtspPlayer.checkFfmpeg"
+        },
+        {
+          "command": "rtspPlayer.selfTest"
+        },
+        {
+          "command": "rtspPlayer.showLog"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RTSP Player",
+      "properties": {
+        "rtspPlayer.ffmpegPath": {
+          "type": "string",
+          "default": "ffmpeg",
+          "markdownDescription": "Path to the `ffmpeg` executable. Defaults to `ffmpeg` resolved from `PATH`."
+        },
+        "rtspPlayer.rtspTransport": {
+          "type": "string",
+          "enum": [
+            "tcp",
+            "udp"
+          ],
+          "enumDescriptions": [
+            "Reliable, fewer artifacts (recommended).",
+            "Lower latency but sensitive to packet loss."
+          ],
+          "default": "tcp",
+          "description": "RTP transport for RTSP inputs (-rtsp_transport)."
+        },
+        "rtspPlayer.videoMode": {
+          "type": "string",
+          "enum": [
+            "transcode",
+            "copy"
+          ],
+          "enumDescriptions": [
+            "Re-encode to H.264 baseline — works almost everywhere, uses CPU.",
+            "Copy the video stream — low CPU, requires H.264 in the camera."
+          ],
+          "default": "transcode",
+          "description": "How the video stream is handled."
+        },
+        "rtspPlayer.audioMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Include audio only when the VS Code webview can decode AAC (recommended).",
+            "Always encode audio to AAC — can break video in builds without the AAC decoder.",
+            "No audio (-an) — lowest CPU usage."
+          ],
+          "default": "auto",
+          "markdownDescription": "Audio handling. Some VS Code/Electron builds have no AAC decoder in MSE; audio is then skipped so video keeps playing."
+        },
+        "rtspPlayer.segmentDuration": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0.25,
+          "maximum": 6,
+          "description": "HLS segment duration in seconds (shorter = lower latency)."
+        },
+        "rtspPlayer.connectTimeout": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 120,
+          "description": "Seconds to wait for the first segment before the connection is reported as failed."
+        },
+        "rtspPlayer.maxReconnects": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Number of automatic reconnect attempts after the stream drops."
+        },
+        "rtspPlayer.extraFfmpegArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Extra ffmpeg arguments inserted before the output file, e.g. `[\"-vf\",\"scale=1280:-2\"]`."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build -- --production",
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "package": "npx --yes @vscode/vsce package"
+  },
+  "dependencies": {
+    "hls.js": "^1.6.15"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}
