@@ -50,20 +50,29 @@ export function getRecentUrls(context: vscode.ExtensionContext): string[] {
   return context.globalState.get<string[]>(HISTORY_KEY, []);
 }
 
+/** A failing listener (e.g. an unregistered tree view) must never break playback. */
+function notifyChanged(): void {
+  try {
+    changed.fire();
+  } catch {
+    // Listeners are independent of the caller.
+  }
+}
+
 export async function rememberUrl(context: vscode.ExtensionContext, url: string): Promise<void> {
   const recent = getRecentUrls(context).filter((entry) => entry !== url);
   recent.unshift(url);
   await context.globalState.update(HISTORY_KEY, recent.slice(0, HISTORY_LIMIT));
-  changed.fire();
+  notifyChanged();
 }
 
 export async function removeRecentUrl(context: vscode.ExtensionContext, url: string): Promise<void> {
   const next = getRecentUrls(context).filter((entry) => entry !== url);
   await context.globalState.update(HISTORY_KEY, next);
-  changed.fire();
+  notifyChanged();
 }
 
 export async function clearRecentUrls(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update(HISTORY_KEY, []);
-  changed.fire();
+  notifyChanged();
 }

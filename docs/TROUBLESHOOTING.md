@@ -26,10 +26,21 @@ without the webview:
 | Log symptom | Cause / fix |
 |---|---|
 | `Cannot find "ffmpeg"` | ffmpeg missing: install it or set `rtspPlayer.ffmpegPath` |
-| `401 Unauthorized`, `Operation not permitted` | wrong credentials, or the camera limits concurrent RTSP sessions — close other viewers/tabs |
+| `Operation not permitted` | the camera still holds a previous session. TP-Link/Tapo keep it for ~30 s after an abrupt disconnect — wait half a minute, close other viewers, and press Play again (the extension now stops ffmpeg gracefully, so this mostly happens after a crash) |
+| `401 Unauthorized` | wrong credentials |
 | `Timed out waiting for data` with no stderr | camera unreachable, wrong port/path, firewall |
 | `Non-monotonic DTS` warnings | camera timestamps are broken; use `rtspPlayer.videoMode: "transcode"` |
 | `Connection reset by peer`, artefacts | UDP packet loss; switch `rtspPlayer.rtspTransport` from `udp` to `tcp` |
+
+## Camera keeps rejecting the session
+
+TP-Link/Tapo (and many other) cameras allow only a small number of concurrent RTSP sessions and keep a
+dead session open for a while:
+
+* hard-killing ffmpeg makes the camera refuse new connections for **20–40 s** (`Operation not permitted`),
+* this extension stops ffmpeg by writing `q` to its stdin, which performs an orderly RTSP `TEARDOWN`;
+  the camera accepts a new session immediately afterwards (measured: ~360 ms to exit, camera free at once),
+* if another player or a phone app is streaming from the same camera, close it — the session budget is shared.
 
 ## Video plays but there is no sound
 

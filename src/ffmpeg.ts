@@ -107,7 +107,9 @@ export interface BuildArgsOptions {
 }
 
 export function buildFfmpegArgs({ inputUrl, outDir, config, audio }: BuildArgsOptions): string[] {
-  const args: string[] = ['-nostdin', '-hide_banner', '-loglevel', 'warning'];
+  // No `-nostdin`: the session writes `q` to stdin to stop ffmpeg cleanly, which
+  // sends an RTSP TEARDOWN so the camera frees the session immediately.
+  const args: string[] = ['-hide_banner', '-loglevel', 'warning'];
 
   if (/^rtsps?:\/\//i.test(inputUrl)) {
     args.push('-rtsp_transport', config.transport);

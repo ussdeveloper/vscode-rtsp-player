@@ -176,6 +176,33 @@ export class RtspPlayerPanel {
       return;
     }
 
+    try {
+      await this.startStream(url);
+    } catch (err) {
+      // Never leave the UI stuck on "Connecting…" because of an exception.
+      log(`play failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+      this.stopSession();
+      this.postUpdate({
+        state: 'error',
+        message: 'Could not start the stream',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async startStream(url: string): Promise<void> {
+    // Pressing Play on a stream that is already running must not restart ffmpeg:
+    // every hard restart costs the camera session for ~30 s.
+    if (
+      this.session &&
+      this.currentUrl === url &&
+      (this.lastUpdate.state === 'playing' || this.lastUpdate.state === 'connecting')
+    ) {
+      log(`reusing the active session for ${redact(url)}`);
+      this.postUpdate(this.lastUpdate);
+      return;
+    }
+
     this.stopSession();
     this.currentUrl = url;
     this.panel.title = describeStream(url);

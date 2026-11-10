@@ -24,6 +24,8 @@ RTSP ──► ffmpeg ──► finished *.ts segments (temp) ──► local se
   the VS Code resource scheme.
 
 When the stream drops, ffmpeg is restarted automatically (`rtspPlayer.maxReconnects`).
+Stopping a stream sends ffmpeg an orderly shutdown (`q` → RTSP `TEARDOWN`), so the camera frees its
+session immediately — TP-Link/Tapo cameras otherwise refuse new connections for ~30 s after a hard kill.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## Requirements
@@ -84,7 +86,7 @@ with 0.5 s segments.
   (`$TMPDIR/rtsp-player-logs/rtsp-player.log` on macOS/Linux); credentials in URLs are redacted (`***@`),
 * **RTSP Player: Run Self-test** exercises ffmpeg and the HLS server without the webview,
 * if `player.bundle.js` fails to load, the panel shows an explicit message instead of a dead UI,
-* the panel header shows the running version (e.g. `v0.3.0`) — useful to confirm VS Code loaded
+* the panel header shows the running version (e.g. `v0.4.1`) — useful to confirm VS Code loaded
   the new build after an update.
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common failures.
@@ -106,7 +108,7 @@ npm run watch         # esbuild in watch mode
 npm run typecheck
 npm test              # 9 HLS server tests (Node test runner + esbuild)
 npm run package       # builds dist/ and media/player.bundle.js, then a .vsix
-code --install-extension rtsp-player-0.3.0.vsix
+code --install-extension rtsp-player-0.4.1.vsix
 ```
 
 Layout: `src/extension.ts` – activation and commands, `src/panel.ts` – webview,
@@ -128,3 +130,4 @@ Third-party notices: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 * The stream keeps running while the tab is hidden (`retainContextWhenHidden`). Close the tab to
   release ffmpeg.
 * Cameras often limit concurrent RTSP sessions — close tabs you do not use.
+

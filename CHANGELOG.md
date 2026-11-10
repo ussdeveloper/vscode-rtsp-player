@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-10
+
+### Fixed
+
+- **"Connecting…" forever / camera refusing the session.** ffmpeg was killed with `taskkill /F`, which leaves the
+  RTSP session open on the camera; TP-Link/Tapo cameras then reject every new connection with
+  `Operation not permitted` for 20–40 s. Measured: hard kill → new session refused for ~40 s;
+  graceful quit → new session accepted immediately. ffmpeg now receives `q` on stdin (orderly shutdown with
+  RTSP TEARDOWN) and is force-killed only after 1.5 s, so the camera is free right after Stop.
+- Pressing **Play** on a stream that is already running reuses the session instead of restarting ffmpeg.
+- Reconnect delays are now 3 s / 8 s / 20 s instead of a fixed 2 s, so a camera that is still releasing its
+  previous session has time to recover.
+- Errors from the camera are translated into actionable messages (`Operation not permitted`, 401, connection
+  refused, timeouts); a slow connection reports "Still connecting… the camera may be busy".
+- The log directory is re-created if it disappears while the host is running (logging no longer stops
+  permanently after a failed write), and an exception in `play()` now surfaces as an error instead of
+  leaving the panel on "Connecting…".
+- The webview shows "No response from the extension host" if no state arrives within 25 s.
+
 ## [0.4.0] - 2026-11-10
 
 ### Added

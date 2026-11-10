@@ -21,6 +21,25 @@ let recoveries = 0;
 let audioAvailable = true;
 let fallbackUrl = null;
 let usedFallback = false;
+let responseTimer = null;
+
+const EXTENSION_TIMEOUT_MS = 25000;
+
+function armResponseWatchdog() {
+  clearResponseWatchdog();
+  responseTimer = window.setTimeout(() => {
+    report('no state received from the extension host within 25 s', 'error');
+    setStatus('Error', 'error');
+    showOverlay('No response from the extension host. Run “RTSP Player: Show Log” for details.', false);
+  }, EXTENSION_TIMEOUT_MS);
+}
+
+function clearResponseWatchdog() {
+  if (responseTimer !== null) {
+    window.clearTimeout(responseTimer);
+    responseTimer = null;
+  }
+}
 
 function report(message, level) {
   try {
@@ -189,6 +208,7 @@ function attach(streamUrl) {
 }
 
 function applyState(state) {
+  clearResponseWatchdog();
   if (typeof state.audio === 'boolean') {
     audioAvailable = state.audio;
     refreshMuteButton();
@@ -250,6 +270,7 @@ function requestPlay() {
   setStatus('Connecting…', 'connecting');
   showOverlay('Connecting to the stream…', true);
   showDetails('');
+  armResponseWatchdog();
   vscode.postMessage({ type: 'play', url });
 }
 

@@ -21,16 +21,27 @@ export function redact(text: string): string {
 export function initLog(context: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('RTSP Player', { log: true });
   context.subscriptions.push(channel);
-  try {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > FILE_LIMIT_BYTES) {
-      fs.writeFileSync(LOG_FILE, '');
+  fileReady = ensureLogDir();
+  if (fileReady) {
+    try {
+      if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > FILE_LIMIT_BYTES) {
+        fs.writeFileSync(LOG_FILE, '');
+      }
+    } catch {
+      // Rotation is best effort.
     }
-    fileReady = true;
-  } catch {
-    fileReady = false;
   }
   log(`log file: ${LOG_FILE}`);
+}
+
+/** The directory can disappear while the host is running; recreate it lazily. */
+function ensureLogDir(): boolean {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -44,12 +55,14 @@ export function log(message: string): void {
     history.shift();
   }
   channel?.appendLine(line);
-  if (fileReady) {
-    try {
-      fs.appendFileSync(LOG_FILE, `${line}${os.EOL}`);
-    } catch {
-      fileReady = false;
-    }
+  if (!fileReady && !ensureLogDir()) {
+    return;
+  }
+  try {
+    fs.appendFileSync(LOG_FILE, `${line}${os.EOL}`);
+    fileReady = true;
+  } catch {
+    fileReady = false;
   }
 }
 

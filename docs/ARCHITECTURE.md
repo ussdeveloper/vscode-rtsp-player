@@ -53,8 +53,12 @@ with what ffmpeg's `delete_segments` keeps (10 segments ≈ 5 s at `segmentDurat
 * ffmpeg's stderr is mirrored into the log (credentials redacted),
 * unexpected exit triggers an automatic reconnect (`rtspPlayer.maxReconnects`, 2 s delay);
   the counter resets after 15 s of stable playback,
-* stop/dispose kills the process tree (`taskkill /T /F` on Windows), unmounts the key and removes
-  the temp directory; a `process.once('exit')` hook is a last-resort cleanup,
+* stop/dispose writes `q` to ffmpeg's stdin — an orderly shutdown that sends an RTSP `TEARDOWN`, so the
+  camera frees the session immediately; after 1.5 s the process tree is force-killed as a fallback,
+* pressing Play for the stream that is already running reuses the session instead of restarting ffmpeg,
+* unexpected exit triggers an automatic reconnect (delays 3 s / 8 s / 20 s, `rtspPlayer.maxReconnects`);
+  a camera that is still releasing its previous session therefore recovers on its own,
+* a `process.once('exit')` hook is a last-resort cleanup,
 * state changes are reported to the panel: `connecting | playing | error | stopped`.
 
 ## Webview (`src/panel.ts`, `media/player.js`)

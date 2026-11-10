@@ -59,7 +59,11 @@ export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTree
   }
 
   refresh(): void {
-    this.emitter.fire(undefined);
+    try {
+      this.emitter.fire(undefined);
+    } catch {
+      // Rendering errors must not propagate into the caller (e.g. play()).
+    }
   }
 
   dispose(): void {

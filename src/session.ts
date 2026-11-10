@@ -20,9 +20,34 @@ export interface SessionUpdate {
   attempt?: number;
 }
 
-const RETRY_DELAY_MS = 2000;
+const RETRY_DELAYS_MS = [3000, 8000, 20000];
+const GRACEFUL_STOP_MS = 1500;
 const STABLE_UPTIME_MS = 15000;
 const STDERR_TAIL_LINES = 30;
+const SLOW_CONNECT_MS = 8000;
+
+/**
+ * Turns common ffmpeg errors into something the user can act on.
+ */
+export function explainFailure(stderr: string): string | undefined {
+  const text = stderr.toLowerCase();
+  if (text.includes('operation not permitted')) {
+    return 'The camera refused the session. TP-Link/Tapo cameras keep a previous session for ~30 s after an abrupt disconnect — wait half a minute (or close other viewers) and press Play again.';
+  }
+  if (text.includes('401') || text.includes('unauthorized')) {
+    return 'The camera rejected the credentials (401 Unauthorized).';
+  }
+  if (text.includes('connection refused')) {
+    return 'The camera refused the TCP connection — check the host and port.';
+  }
+  if (text.includes('no route to host')) {
+    return 'Host unreachable — check the camera address and your network.';
+  }
+  if (text.includes('timed out') || text.includes('timeout') || text.includes('end of file')) {
+    return 'The camera stopped answering — check the network, the URL path and whether another client holds the only session.';
+  }
+  return undefined;
+}
 
 const liveChildren = new Set<ChildProcess>();
 let exitHookInstalled = false;
@@ -60,6 +85,7 @@ export class RtspSession {
   private startedAt = 0;
   private stopped = true;
   private stderrTail: string[] = [];
+  private slowNotice = false;
 
   constructor(
     private readonly inputUrl: string,
@@ -104,6 +130,7 @@ export class RtspSession {
     this.key = `${this.keyBase}${this.attempt.toString(16).padStart(2, '0')}`;
     this.dir = path.join(os.tmpdir(), 'rtsp-player', String(process.pid), this.key);
     this.stderrTail = [];
+    this.slowNotice = false;
 
     try {
       await fs.promises.mkdir(this.dir, { recursive: true });
@@ -131,7 +158,7 @@ export class RtspSession {
 
     let child: ChildProcess;
     try {
-      child = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+      child = spawn(exe, args, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] });
     } catch (err) {
       this.fail('Failed to start ffmpeg', String(err));
       return;
@@ -194,6 +221,14 @@ export class RtspSession {
       if (this.stopped) {
         return;
       }
+      if (!this.slowNotice && Date.now() - this.startedAt > SLOW_CONNECT_MS) {
+        this.slowNotice = true;
+        this.emit({
+          state: 'connecting',
+          message: 'Still connecting… the camera may be busy with another viewer.',
+          attempt: this.attempt,
+        });
+      }
       if (Date.now() > deadline) {
         this.fail(
           'Timed out waiting for data',
@@ -221,10 +256,11 @@ export class RtspSession {
     const detail = this.stderrTail.join('\n') || undefined;
 
     if (this.failures < config.maxReconnects) {
+      const delay = RETRY_DELAYS_MS[Math.min(this.failures, RETRY_DELAYS_MS.length - 1)];
       this.failures += 1;
       this.emit({
         state: 'connecting',
-        message: `Stream ended (${code ?? signal ?? 'no code'}) — retrying in ${RETRY_DELAY_MS / 1000} s…`,
+        message: `Stream ended (${code ?? signal ?? 'no code'}) — retrying in ${Math.round(delay / 1000)} s…`,
         detail,
         attempt: this.attempt + 1,
       });
@@ -232,7 +268,7 @@ export class RtspSession {
         if (!this.stopped) {
           void this.launch();
         }
-      }, RETRY_DELAY_MS);
+      }, delay);
       return;
     }
 
@@ -247,10 +283,12 @@ export class RtspSession {
     this.clearTimers();
     this.killChild();
     this.releaseAttempt();
+    const tail = detail || this.stderrTail.join('\n') || undefined;
+    const hint = tail ? explainFailure(tail) : undefined;
     this.emit({
       state: 'error',
-      message,
-      detail: detail || this.stderrTail.join('\n') || undefined,
+      message: hint ?? message,
+      detail: tail,
       attempt: this.attempt,
     });
   }
@@ -272,29 +310,46 @@ export class RtspSession {
     if (!child || child.exitCode !== null || child.signalCode !== null) {
       return;
     }
-    const pid = child.pid;
-    if (process.platform === 'win32' && pid) {
-      try {
-        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on(
-          'error',
-          () => {
+
+    // `q` makes ffmpeg shut down in an orderly way (RTSP TEARDOWN). Killing it
+    // hard leaves the session open on the camera for ~30 s, which then rejects
+    // every new connection with "Operation not permitted".
+    try {
+      child.stdin?.end('q\n');
+    } catch {
+      // stdin may already be closed.
+    }
+
+    const force = () => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return;
+      }
+      if (process.platform === 'win32' && child.pid) {
+        try {
+          spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          }).on('error', () => {
             try {
               child.kill();
             } catch {
               // Already gone.
             }
-          },
-        );
-        return;
-      } catch {
-        // Fall through to the cross-platform kill.
+          });
+          return;
+        } catch {
+          // Fall through to the cross-platform kill.
+        }
       }
-    }
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // Already gone.
-    }
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // Already gone.
+      }
+    };
+
+    const timer = setTimeout(force, GRACEFUL_STOP_MS);
+    child.once('exit', () => clearTimeout(timer));
   }
 
   private releaseAttempt(): void {
