@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 const HISTORY_KEY = 'rtspPlayer.recentUrls';
@@ -79,4 +80,49 @@ export async function removeRecentUrl(context: vscode.ExtensionContext, url: str
 export async function clearRecentUrls(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update(HISTORY_KEY, []);
   notifyChanged();
+}
+
+/**
+ * `globalState` is namespaced by extension id, so renaming the publisher starts
+ * an empty list. A `history-import.json` file in this extension's global storage
+ * (array of URLs) seeds the list once and is then removed.
+ */
+export async function importLegacyHistory(context: vscode.ExtensionContext): Promise<number> {
+  if (getRecentUrls(context).length > 0) {
+    return 0;
+  }
+  const file = vscode.Uri.joinPath(context.globalStorageUri, 'history-import.json');
+  let raw: string;
+  try {
+    raw = await fs.promises.readFile(file.fsPath, 'utf8');
+  } catch {
+    return 0;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return 0;
+  }
+  if (!Array.isArray(parsed)) {
+    return 0;
+  }
+  const urls: string[] = [];
+  for (const entry of parsed) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    try {
+      urls.push(normalizeStreamUrl(entry));
+    } catch {
+      // Skip anything that is not a valid stream URL.
+    }
+  }
+  if (urls.length === 0) {
+    return 0;
+  }
+  await context.globalState.update(HISTORY_KEY, urls.slice(0, HISTORY_LIMIT));
+  await fs.promises.rm(file.fsPath, { force: true }).catch(() => undefined);
+  notifyChanged();
+  return urls.length;
 }

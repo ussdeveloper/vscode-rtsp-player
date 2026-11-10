@@ -2,7 +2,7 @@
   "name": "rtsp-player",
   "displayName": "RTSP Player",
   "description": "Watch RTSP / IP camera streams inside a VS Code tab (ffmpeg + HLS + hls.js).",
-  "version": "0.4.3",
+  "version": "0.4.5",
   "publisher": "ussdeveloper",
   "license": "MIT",
   "repository": {
@@ -103,7 +103,7 @@
     "viewsWelcome": [
       {
         "view": "rtspPlayer.recent",
-        "contents": "No streams yet.\n[Open a stream](command:rtspPlayer.open)\n[Open from clipboard](command:rtspPlayer.openUrl)"
+        "contents": "No streams yet.\nEvery stream you play is remembered here (up to 12).\n[Open a stream](command:rtspPlayer.open)\n[Open from clipboard](command:rtspPlayer.openUrl)"
       }
     ],
     "menus": {
@@ -132,9 +132,19 @@
       ],
       "view/title": [
         {
+          "command": "rtspPlayer.open",
+          "when": "view == rtspPlayer.recent",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rtspPlayer.openUrl",
+          "when": "view == rtspPlayer.recent",
+          "group": "navigation@2"
+        },
+        {
           "command": "rtspPlayer.refreshRecent",
           "when": "view == rtspPlayer.recent",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "rtspPlayer.clearRecent",

@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-11-10
+
+### Added
+
+- **One-time history import.** On activation, if the recent list is empty, the extension reads
+  `<globalStorage>/history-import.json` (array of URLs), keeps the valid entries, stores them and deletes
+  the file. This restores the list after an extension id change (e.g. a publisher rename), where VS Code
+  gives the new id a fresh `globalState`.
+- `recent view: imported N URL(s) from history-import.json` is written to the log.
+
+## [0.4.4] - 2026-11-10
+
+### Changed
+
+- The **Recent streams** view now contains recent streams only; the quick actions moved to buttons in
+  the view title (open stream, open from clipboard, refresh). An empty history therefore shows VS Code's
+  explicit “No streams yet” welcome panel instead of a view that looks broken.
+
+### Documented
+
+- Stream history is stored per extension id in `globalState`: changing the publisher starts an empty list
+  and the old entries cannot be migrated through the extension API.
+
 ## [0.4.3] - 2026-11-10
 
 ### Fixed

@@ -5,7 +5,7 @@ import { initLog, log, logHistory, showLog } from './log';
 import { RtspPlayerPanel } from './panel';
 import { RecentStreamsProvider, removeRecentCommand } from './recentView';
 import { showSelfTest } from './selfTest';
-import { clearRecentUrls, getRecentUrls, normalizeStreamUrl } from './streams';
+import { clearRecentUrls, importLegacyHistory, getRecentUrls, normalizeStreamUrl } from './streams';
 import { disposeServer } from './streamServer';
 
 async function promptForUrl(preset?: string): Promise<string | undefined> {
@@ -69,6 +69,13 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
   );
+
+  void importLegacyHistory(context).then((imported) => {
+    if (imported > 0) {
+      log(`recent view: imported ${imported} URL(s) from history-import.json`);
+      recentProvider.refresh();
+    }
+  });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rtspPlayer.open', async (argument?: unknown) => {

@@ -26,26 +26,13 @@ interface StreamTreeItem extends vscode.TreeItem {
   url?: string;
 }
 
-const ACTIONS: ActionNode[] = [
-  {
-    kind: 'action',
-    id: 'rtspPlayer.open',
-    label: 'Open Stream…',
-    description: 'pick from history or enter a URL',
-    icon: 'add',
-  },
-  {
-    kind: 'action',
-    id: 'rtspPlayer.openUrl',
-    label: 'Open from Clipboard',
-    description: 'paste an RTSP URL',
-    icon: 'clippy',
-  },
-];
-
 /**
  * Activity bar view listing recent streams. Items only ever show a label
  * without credentials; the full URL stays in the command argument.
+ *
+ * The list contains recent streams only — the quick actions live in the view
+ * title — so an empty history shows VS Code's welcome message instead of a
+ * view that looks broken.
  */
 export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTreeNode> {  private readonly emitter = new vscode.EventEmitter<RecentTreeNode | undefined>();
   private readonly observer: vscode.Disposable;
@@ -103,8 +90,8 @@ export class RecentStreamsProvider implements vscode.TreeDataProvider<RecentTree
       return [];
     }
     const recent = getRecentUrls(this.context).map<RecentNode>((url) => ({ kind: 'recent', url }));
-    log(`recent view: getChildren -> ${recent.length} recent + ${ACTIONS.length} actions`);
-    return [...ACTIONS, ...recent];
+    log(`recent view: getChildren -> ${recent.length} recent`);
+    return recent;
   }
 
   getParent(): undefined {

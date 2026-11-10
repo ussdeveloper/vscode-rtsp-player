@@ -43,6 +43,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 The **Recent streams** view lists the last 12 URLs. Labels never show credentials —
 only `host:port/path`; clicking an item opens the stream, the trash icon removes it from history.
+Quick actions (open stream, open from clipboard, refresh) are buttons in the view title, so an empty
+history shows an explicit “No streams yet” panel instead of an empty list.
+
+> History is stored per extension id in VS Code's `globalState`. Renaming the publisher starts a fresh
+> list; the previous entries stay in the old id's state and are not migrated.
 
 | Command | Action |
 |---|---|
@@ -85,7 +90,7 @@ with 0.5 s segments.
   (`$TMPDIR/rtsp-player-logs/rtsp-player.log` on macOS/Linux); credentials in URLs are redacted (`***@`),
 * **RTSP Player: Run Self-test** exercises ffmpeg and the HLS server without the webview,
 * if `player.bundle.js` fails to load, the panel shows an explicit message instead of a dead UI,
-* the panel header shows the running version (e.g. `v0.4.3`) — useful to confirm VS Code loaded
+* the panel header shows the running version (e.g. `v0.4.5`) — useful to confirm VS Code loaded
   the new build after an update.
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common failures.
@@ -107,7 +112,7 @@ npm run watch         # esbuild in watch mode
 npm run typecheck
 npm test              # 9 HLS server tests (Node test runner + esbuild)
 npm run package       # builds dist/ and media/player.bundle.js, then a .vsix
-code --install-extension rtsp-player-0.4.3.vsix
+code --install-extension rtsp-player-0.4.5.vsix
 ```
 
 Layout: `src/extension.ts` – activation and commands, `src/panel.ts` – webview,
