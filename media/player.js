@@ -73,6 +73,20 @@ function setStatus(text, kind) {
   statusEl.className = kind ? `status ${kind}` : 'status';
 }
 
+/** Rebuilds the autocomplete list without touching what the user typed. */
+function applyHistory(history) {
+  if (!Array.isArray(history)) {
+    return;
+  }
+  historyList.innerHTML = '';
+  for (const url of history) {
+    const option = document.createElement('option');
+    option.value = url;
+    historyList.appendChild(option);
+  }
+  report(`history list updated (${history.length})`);
+}
+
 function showOverlay(text, spinning) {
   overlayText.textContent = text;
   overlay.classList.remove('hidden');
@@ -280,17 +294,14 @@ window.addEventListener('message', (event) => {
     return;
   }
   if (message.type === 'init') {
-    if (Array.isArray(message.history)) {
-      historyList.innerHTML = '';
-      for (const url of message.history) {
-        const option = document.createElement('option');
-        option.value = url;
-        historyList.appendChild(option);
-      }
-    }
+    applyHistory(message.history);
     if (message.lastUrl && !urlInput.value) {
       urlInput.value = message.lastUrl;
     }
+    return;
+  }
+  if (message.type === 'history') {
+    applyHistory(message.history);
     return;
   }
   if (message.type === 'state') {

@@ -22,6 +22,7 @@ export interface SessionUpdate {
 
 const RETRY_DELAYS_MS = [3000, 8000, 20000];
 const GRACEFUL_STOP_MS = 1500;
+const FORCE_STOP_WAIT_MS = 2500;
 const STABLE_UPTIME_MS = 15000;
 const STDERR_TAIL_LINES = 30;
 const SLOW_CONNECT_MS = 8000;
@@ -33,6 +34,9 @@ export function explainFailure(stderr: string): string | undefined {
   const text = stderr.toLowerCase();
   if (text.includes('operation not permitted')) {
     return 'The camera refused the session. TP-Link/Tapo cameras keep a previous session for ~30 s after an abrupt disconnect — wait half a minute (or close other viewers) and press Play again.';
+  }
+  if (text.includes('invalid data found') || text.includes('-10054') || text.includes('connection reset')) {
+    return 'The camera closed the RTSP handshake (connection reset). Check the stream path and credentials, or try `rtspPlayer.rtspTransport`: "udp".';
   }
   if (text.includes('401') || text.includes('unauthorized')) {
     return 'The camera rejected the credentials (401 Unauthorized).';
@@ -111,8 +115,8 @@ export class RtspSession {
     }
     this.stopped = true;
     this.clearTimers();
-    this.killChild();
-    this.releaseAttempt();
+    const dir = this.detachAttempt();
+    void this.killChild().then(() => removeDir(dir));
     this.emit({ state: 'stopped' });
   }
 
@@ -124,7 +128,9 @@ export class RtspSession {
 
   private async launch(): Promise<void> {
     this.clearTimers();
-    this.releaseAttempt();
+    // A previous attempt may still be shutting down; only its mount key and
+    // directory are released, never a directory ffmpeg is still writing to.
+    this.releaseMount();
 
     this.attempt += 1;
     this.key = `${this.keyBase}${this.attempt.toString(16).padStart(2, '0')}`;
@@ -281,8 +287,8 @@ export class RtspSession {
     }
     this.stopped = true;
     this.clearTimers();
-    this.killChild();
-    this.releaseAttempt();
+    const dir = this.detachAttempt();
+    void this.killChild().then(() => removeDir(dir));
     const tail = detail || this.stderrTail.join('\n') || undefined;
     const hint = tail ? explainFailure(tail) : undefined;
     this.emit({
@@ -304,12 +310,14 @@ export class RtspSession {
     }
   }
 
-  private killChild(): void {
+  private killChild(): Promise<void> {
     const child = this.child;
     this.child = undefined;
     if (!child || child.exitCode !== null || child.signalCode !== null) {
-      return;
+      return Promise.resolve();
     }
+
+    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
 
     // `q` makes ffmpeg shut down in an orderly way (RTSP TEARDOWN). Killing it
     // hard leaves the session open on the camera for ~30 s, which then rejects
@@ -348,18 +356,32 @@ export class RtspSession {
       }
     };
 
-    const timer = setTimeout(force, GRACEFUL_STOP_MS);
-    child.once('exit', () => clearTimeout(timer));
+    setTimeout(force, GRACEFUL_STOP_MS);
+    const giveUp = new Promise<void>((resolve) => setTimeout(resolve, GRACEFUL_STOP_MS + FORCE_STOP_WAIT_MS));
+    return Promise.race([exited, giveUp]);
   }
 
-  private releaseAttempt(): void {
+  /** Unmounts the current key and hands back its directory (or ''). */
+  private detachAttempt(): string {
+    const dir = this.dir;
+    this.releaseMount();
+    return dir;
+  }
+
+  private releaseMount(): void {
     if (!this.key) {
       return;
     }
     unmount(this.key);
-    const dir = this.dir;
     this.key = '';
     this.dir = '';
-    void fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+/** Removes a session directory once ffmpeg has definitely stopped writing. */
+function removeDir(dir: string): void {
+  if (!dir) {
+    return;
+  }
+  void fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
 }

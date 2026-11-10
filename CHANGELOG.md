@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-10
+
+### Fixed
+
+- **Recent URLs were only loaded once**, so a URL that was just played never showed up in the panel's
+  autocomplete list. The extension now pushes a `history` message after every play and whenever the
+  sidebar changes the list.
+- **Temporary session directory was deleted while ffmpeg was still writing** (`failed to rename file …
+  Operation not permitted`, `Error muxing a packet`). Cleanup now runs after ffmpeg has actually exited,
+  so shutdown stays orderly and the camera session is still released with an RTSP `TEARDOWN`.
+- Pressing Play gives immediate `Connecting…` feedback instead of waiting for the first async step.
+- Connection resets (`Error number -10054`, "Invalid data found") now explain that the handshake was
+  closed and suggest `rtspPlayer.rtspTransport: "udp"`.
+
+### Changed
+
+- Publisher set to `ussdeveloper`, repository URL points at the GitHub project.
+
 ## [0.4.1] - 2026-11-10
 
 ### Fixed

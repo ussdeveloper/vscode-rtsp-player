@@ -7,7 +7,7 @@ import { readConfig } from './config';
 import { log, redact } from './log';
 import type { SessionUpdate } from './session';
 import { RtspSession } from './session';
-import { describeStream, getRecentUrls, normalizeStreamUrl, rememberUrl } from './streams';
+import { describeStream, getRecentUrls, normalizeStreamUrl, onDidChangeRecent, rememberUrl } from './streams';
 
 /** Root of all ffmpeg output; also whitelisted as a webview resource root. */
 function globalTmpRoot(): string {
@@ -106,6 +106,9 @@ export class RtspPlayerPanel {
     );
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
+    // Sidebar edits (remove/clear) must refresh the panel's autocomplete too.
+    this.disposables.push(onDidChangeRecent(() => this.postHistory()));
+
     RtspPlayerPanel.panels.add(this);
     RtspPlayerPanel.active = this;
 
@@ -203,11 +206,15 @@ export class RtspPlayerPanel {
       return;
     }
 
+    // Give the user immediate feedback; the session may take a moment to appear.
+    this.postUpdate({ state: 'connecting', message: 'Connecting to the stream…' });
+
     this.stopSession();
     this.currentUrl = url;
     this.panel.title = describeStream(url);
     const playToken = ++this.playToken;
     await rememberUrl(this.context, url);
+    this.postHistory();
 
     // The webview reports which codecs it can decode; give it a moment so the
     // first attempt already picks the right audio mode.
@@ -279,6 +286,14 @@ export class RtspPlayerPanel {
       return;
     }
     void this.panel.webview.postMessage({ type: 'state', audio: this.audioEnabled, ...update });
+  }
+
+  /** Keeps the URL autocomplete list in the panel in sync with the history. */
+  private postHistory(): void {
+    if (!this.webviewReady) {
+      return;
+    }
+    void this.panel.webview.postMessage({ type: 'history', history: getRecentUrls(this.context) });
   }
 
   /** For automated checks: current panel state and where the stream points. */
